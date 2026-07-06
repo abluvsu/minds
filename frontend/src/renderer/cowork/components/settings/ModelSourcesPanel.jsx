@@ -9,15 +9,17 @@ import {
   fetchProviderEntryModels,
 } from '../../api';
 
+// Anthropic and MindsHub were removed as addable source types
+// (2026-07-04, user decision): Claude runs via the Claude Code CLI
+// coworker (subscription, no API key), and MindsDB/MindsHub is not
+// used at all. The backend still tolerates legacy rows of those types.
 const TYPE_LABELS = {
-  anthropic: 'Anthropic',
   openai: 'OpenAI',
   gemini: 'Gemini',
   'openai-compatible': 'OpenAI-compatible (NVIDIA NIM, Groq, OpenRouter, …)',
-  'minds-cloud': 'MindsHub',
 };
 const TYPES = Object.keys(TYPE_LABELS);
-const NEEDS_BASE_URL = new Set(['openai-compatible', 'minds-cloud']);
+const NEEDS_BASE_URL = new Set(['openai-compatible']);
 
 const rowStyle = {
   display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 14px',
@@ -107,7 +109,7 @@ export default function ModelSourcesPanel({ onChanged }) {
     const models = form.models.split(',').map((m) => m.trim()).filter(Boolean);
     if (!form.slug.trim()) { setError('Slug is required (e.g. "nvidia", "gemini-work").'); return; }
     if (!form.apiKey.trim()) { setError('API key is required.'); return; }
-    if (NEEDS_BASE_URL.has(form.type) && !form.baseUrl.trim() && form.type !== 'minds-cloud') {
+    if (NEEDS_BASE_URL.has(form.type) && !form.baseUrl.trim()) {
       setError(`${TYPE_LABELS[form.type]} needs a base URL.`);
       return;
     }
@@ -239,7 +241,7 @@ export default function ModelSourcesPanel({ onChanged }) {
               style={inputStyle}
             />
           </div>
-          {form.type !== 'anthropic' && form.type !== 'gemini' && (
+          {form.type !== 'gemini' && (
             <div>
               <span style={labelStyle}>Base URL{form.type === 'openai-compatible' ? ' (required)' : ''}</span>
               <input

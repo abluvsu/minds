@@ -146,6 +146,16 @@ export default function Composer({
   /** Space we want cleared above the + control before opening the menu upward (~menu height + margin). */
   const ATTACH_MENU_TOP_RESERVE_PX = 200;
 
+  /** Model menu opens above the pill by default (composer is usually
+      glued to the viewport bottom in ChatView, so downward opening was
+      getting clipped off-screen — see model pill onClick). Flips down
+      only when there isn't enough room above (composer scrolled near
+      the top). Same measure-then-flip pattern as the attach menu. */
+  const modelPillRef = useRef(null);
+  const modelMenuRef = useRef(null);
+  const [modelMenuBelow, setModelMenuBelow] = useState(false);
+  const MODEL_MENU_TOP_RESERVE_PX = 260; // taller list now: CLI defaults + per-model rows
+
   // Typing notifier — fires `onTypingChange(true)` on input and
   // `onTypingChange(false)` after ~1s of inactivity. The home view
   // uses this to wake the OrbitMorph from idle while the user is
@@ -413,6 +423,20 @@ export default function Composer({
     if (openMenu !== 'attach') return;
     updateAttachPlacement();
   }, [openMenu, connectorsOpen, busy, disabled]);
+
+  const updateModelPlacement = () => {
+    const anchor = modelPillRef.current;
+    if (!anchor) return;
+    const r = anchor.getBoundingClientRect();
+    const measured = modelMenuRef.current?.offsetHeight;
+    const reserve = Math.max(measured ?? 0, MODEL_MENU_TOP_RESERVE_PX) + 24;
+    setModelMenuBelow(r.top < reserve);
+  };
+
+  useLayoutEffect(() => {
+    if (openMenu !== 'model') return;
+    updateModelPlacement();
+  }, [openMenu, models.length]);
 
   async function handleAttachFiles(files) {
     if (!files?.length || !onAttachFiles) return;
@@ -1006,8 +1030,14 @@ export default function Composer({
               </span>
             ) : (
               <button
+                ref={modelPillRef}
                 className="meta-pill"
-                onClick={() => setOpenMenu(openMenu === 'model' ? null : 'model')}
+                onClick={() => {
+                  if (openMenu === 'model') { setOpenMenu(null); return; }
+                  const anchor = modelPillRef.current;
+                  setModelMenuBelow(anchor ? anchor.getBoundingClientRect().top < MODEL_MENU_TOP_RESERVE_PX + 24 : false);
+                  setOpenMenu('model');
+                }}
                 title="Choose model"
               >
                 <span>{model?.name ?? 'Select model'}</span>
@@ -1019,7 +1049,19 @@ export default function Composer({
       )}
 
       {openMenu === 'model' && !modelReadOnly && (
-        <div className="menu" style={{ right: 8, top: 'calc(100% + 6px)', minWidth: 260 }}>
+        <div
+          ref={modelMenuRef}
+          className={`menu${modelMenuBelow ? ' menu--drop-down' : ''}`}
+          style={{
+            right: 8,
+            minWidth: 260,
+            maxHeight: 'min(50vh, 360px)',
+            overflowY: 'auto',
+            ...(modelMenuBelow
+              ? { top: 'calc(100% + 6px)' }
+              : { bottom: 'calc(100% + 6px)' }),
+          }}
+        >
           <div style={{ padding: '6px 10px', fontSize: 11, fontWeight: 600, color: 'var(--frost-600)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Model</div>
           {models.map((m) => (
             <button

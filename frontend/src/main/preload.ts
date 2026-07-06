@@ -105,3 +105,10 @@ contextBridge.exposeInMainWorld('agents', {
     return () => ipcRenderer.removeListener('agents:event', listener);
   },
 });
+
+contextBridge.exposeInMainWorld('mcp', {
+  list: () => ipcRenderer.invoke('mcp:list'),
+  reload: () => ipcRenderer.invoke('mcp:reload'),
+  validate: () => ipcRenderer.invoke('mcp:validate'),
+  getStatus: (serverId: string) => ipcRenderer.invoke('mcp:getStatus', serverId),
+});

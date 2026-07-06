@@ -1428,36 +1428,18 @@ export default function ChatView({
                         fontSize: 15,
                         letterSpacing: '0.02em',
                         color: T.ink,
-                      }}>Connect a provider to start chatting</div>
+                      }}>No coworker available</div>
                       <div style={{
                         fontFamily: FONT_BODY,
                         fontSize: 13.5,
                         lineHeight: 1.55,
                         color: T.ink2,
                       }}>
-                        Cowork needs an LLM provider. Subscribe with MindsHub for managed access, or add your own provider key in Settings.
+                        Install a CLI agent (Claude Code, Antigravity, or Codex) and log in,
+                        or add a model source API key in Settings. MindsHub subscription is
+                        not used.
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
-                        <button
-                          type="button"
-                          onClick={() => host.openExternal(MINDS_BILLING_URL)}
-                          style={{
-                            // bg=ink / text=bg so the label keeps contrast in
-                            // BOTH themes: light → dark button / light text,
-                            // dark → light button / dark text. A hardcoded
-                            // #fff went invisible in dark mode (ink is near-
-                            // white there → white-on-white).
-                            border: 'none',
-                            background: T.ink,
-                            color: 'var(--bg)',
-                            borderRadius: 8,
-                            padding: '8px 14px',
-                            fontFamily: FONT_BODY,
-                            fontSize: 13,
-                            fontWeight: 500,
-                            cursor: 'pointer',
-                          }}
-                        >Subscribe with MindsHub</button>
                         <button
                           type="button"
                           onClick={() => onOpenSettings?.()}

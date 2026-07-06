@@ -264,7 +264,7 @@ export function allocateConversationId() {
 // callback shape the rest of the app already speaks. `conversationId` is
 // optional — omit it to start a new conversation; the caller learns the
 // new id via the first onChunk/onProgress/onDone callback's second arg.
-function _streamResponse(text, { conversationId, projectName, projectPath, model, attachmentIds = [], disabledConnections, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
+function _streamResponse(text, { conversationId, projectName, projectPath, model, harness, attachmentIds = [], disabledConnections, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
   const ctrl = new AbortController();
   (async () => {
     try {
@@ -274,6 +274,7 @@ function _streamResponse(text, { conversationId, projectName, projectPath, model
         body: JSON.stringify({
           input: text,
           model: model || null,
+          harness: harness || null,
           stream: true,
           conversation: conversationId || null,
           // Server's `project` field is a project NAME (folder under
@@ -997,6 +998,65 @@ export async function fetchModelPickerOptions() {
         name: `${modelId} — ${row.label}`,
         desc: row.type,
         providerSlug: row.slug,
+      });
+    }
+  }
+  return options;
+}
+
+// ── Coworkers — every registered harness's descriptor + schema ──────
+//
+// A coworker whose configurationSchema has no "model-picker" control
+// (a CLI agent like Claude Code) is its own model source — no
+// secondary provider-registry pick applies. See
+// cowork.harnesses.base.list_descriptors on the backend.
+
+export async function fetchHarnesses() {
+  try {
+    return await req('/harnesses/');
+  } catch {
+    return [];
+  }
+}
+
+// Install/login status for one coworker (runs the CLI's own status check
+// server-side — a subprocess call for CLI coworkers, so this is called
+// per-card on demand, not bundled into fetchHarnesses()).
+export async function fetchHarnessStatus(id) {
+  try {
+    return await req(`/harnesses/${encodeURIComponent(id)}/status`);
+  } catch (e) {
+    return { installed: false, path: null, loggedIn: false, detail: e.message };
+  }
+}
+
+// CLI coworkers shaped as composer picker options (harness set, no
+// providerSlug) so they sit in the same flat list as the registry's
+// (provider, model) pairs. Selection is by CATEGORY, not by schema
+// shape: a CLI coworker may carry its own model-picker (the CLI's
+// `--model` catalog — claude aliases, `agy models` output), which
+// expands into one extra option per model. `cliModel` is the value the
+// send path forwards as the request `model`; the coworker's default
+// entry leaves it unset so the CLI picks its own default.
+export async function fetchCliCoworkerOptions() {
+  const harnesses = await fetchHarnesses();
+  const options = [];
+  for (const h of harnesses) {
+    if (h.category !== 'CLI') continue;
+    options.push({
+      id: h.id,
+      name: h.label,
+      desc: (h.tags || []).join(' · ') || h.category,
+      harness: h.id,
+    });
+    const picker = (h.configurationSchema || []).find((c) => c.type === 'model-picker');
+    for (const m of picker?.options || []) {
+      options.push({
+        id: `${h.id}::${m}`,
+        name: `${h.label} · ${m}`,
+        desc: `${h.label} on ${m}`,
+        harness: h.id,
+        cliModel: m,
       });
     }
   }

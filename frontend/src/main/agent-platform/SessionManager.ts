@@ -2,6 +2,8 @@ import { AgentRegistry } from './AgentRegistry';
 import { globalPtyManager } from './PtyManager';
 import { globalEventBus, AgentState } from './EventBus';
 import Store from 'electron-store';
+import { globalMcpRegistry } from '../mcp/MCPRegistry';
+import { MCPEnvironment } from '../mcp/MCPEnvironment';
 
 export interface SessionContext {
   cwd: string;
@@ -67,12 +69,21 @@ export class SessionManager {
     globalEventBus.emitEvent('session.created', sessionId, { session, agent });
 
     try {
+      const activeMcpServers = globalMcpRegistry.getActiveServers();
+      const mcpEnv = MCPEnvironment.buildEnv(activeMcpServers);
+      
+      const mergedEnv = {
+        ...process.env,
+        ...context.env,
+        ...mcpEnv
+      };
+
       globalPtyManager.spawn({
         sessionId,
         cwd: context.cwd,
         command: agent.executable,
         args: agent.defaultArgs,
-        env: context.env
+        env: mergedEnv as any
       });
 
       session.state = 'Ready';

@@ -81,6 +81,7 @@ declare global {
   interface Window {
     antontron: AntonTronAPI;
     agents: any;
+    mcp: any;
   }
 
   namespace React {

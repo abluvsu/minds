@@ -20,6 +20,9 @@ import { AgentRegistry } from './agent-platform/AgentRegistry';
 import { SessionManager } from './agent-platform/SessionManager';
 import { globalEventBus } from './agent-platform/EventBus';
 import { globalPtyManager } from './agent-platform/PtyManager';
+import { globalMcpRegistry } from './mcp/MCPRegistry';
+import { MCPValidator } from './mcp/MCPValidator';
+import { MCPConfigLoader } from './mcp/MCPConfigLoader';
 
 // Instantiate Agent Platform
 const agentRegistry = new AgentRegistry();
@@ -93,13 +96,30 @@ function getUpdateMode(): 'auto' | 'manual' {
   return vars.UI_UPDATE_MODE === 'manual' ? 'manual' : 'auto';
 }
 
-function checkConfigured(): { configured: boolean; provider: string } {
+async function checkConfigured(): Promise<{ configured: boolean; provider: string }> {
   const vars = readEnvFile();
   if (vars.ANTON_TERMS_CONSENT !== 'true') return { configured: false, provider: '' };
-  if (vars.ANTON_MINDS_API_KEY) return { configured: true, provider: 'minds' };
-  if (vars.ANTON_ANTHROPIC_API_KEY) return { configured: true, provider: 'anthropic' };
-  if (vars.ANTON_OPENAI_API_KEY && vars.ANTON_OPENAI_BASE_URL) return { configured: true, provider: 'openai' };
-  if (vars.ANTON_OPENAI_API_KEY) return { configured: true, provider: 'openai' };
+
+  // Ask the backend's provider registry (Settings → Model Sources) —
+  // it's the actual source of truth build_llm_client() routes on. The
+  // legacy ANTON_*_API_KEY .env lines below are only ever written by
+  // the MindsHub-managed onboarding flow, so a registry-only install
+  // (BYOK via Settings) would otherwise always look "unconfigured" and
+  // get routed back into onboarding on every launch.
+  try {
+    const res = await httpRequest(`http://127.0.0.1:${getServerPort()}/api/v1/settings/configured`, {
+      method: 'GET',
+      headers: {},
+    });
+    if (res.status === 200) {
+      const data = JSON.parse(res.body);
+      if (data.configured) return { configured: true, provider: data.provider || '' };
+    }
+  } catch {
+    // Backend not reachable — treat as unconfigured rather than crash;
+    // setup/install gates upstream of this call should already have
+    // ensured the server is running by the time it's invoked.
+  }
   return { configured: false, provider: '' };
 }
 
@@ -767,6 +787,26 @@ function setupIPC() {
     globalPtyManager.resize(sessionId, cols, rows);
   });
 
+  // ── MCP Platform IPC ──
+  ipcMain.handle('mcp:list', () => {
+    return globalMcpRegistry.getAllServers();
+  });
+
+  ipcMain.handle('mcp:reload', () => {
+    return globalMcpRegistry.reload();
+  });
+
+  ipcMain.handle('mcp:validate', () => {
+    const config = MCPConfigLoader.load();
+    return MCPValidator.validate(config);
+  });
+
+  ipcMain.handle('mcp:getStatus', (_event, serverId) => {
+    const server = globalMcpRegistry.getServer(serverId);
+    if (!server) return { status: 'unknown' };
+    return { status: server.enabled ? 'ready' : 'disabled' };
+  });
+
   globalEventBus.onEvent((agentEvent) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('agents:event', agentEvent);
@@ -915,6 +955,14 @@ app.whenReady().then(() => {
       setUpdateNotifier((payload) => {
         mainWindow?.webContents.send(IPC.SERVER_UPDATE_STATUS, payload);
       });
+      // The updater's own opt-out only reads process.env, which a
+      // desktop-launched app never has set — honor the same flag from
+      // ~/.anton/.env so a custom locally-installed cowork-server can't
+      // be silently replaced by a newer PyPI release.
+      const envFileDisable = (readEnvFile()['COWORK_SERVER_DISABLE_AUTOUPDATE'] || '').toLowerCase();
+      if (envFileDisable === '1' || envFileDisable === 'true') {
+        process.env.COWORK_SERVER_DISABLE_AUTOUPDATE = '1';
+      }
       maybeUpdateServer().then((updateResult) => {
         if (updateResult.updated) {
           console.log(`[server-updater] updated ${updateResult.previousVersion} → ${updateResult.newVersion}`);

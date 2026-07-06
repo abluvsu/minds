@@ -40,7 +40,7 @@ import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettin
          deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
          fetchSavedConnection, deleteDatasource,
          fetchInFlightStatus, tailInFlight, fetchInFlightList,
-         fetchModelPickerOptions } from './api';
+         fetchModelPickerOptions, fetchCliCoworkerOptions } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 
 // One-of-ten encouraging follow-ups picked when a connect task is
@@ -126,7 +126,7 @@ function isAntonConfigError(message, event) {
 
 function normalizeAntonError(message, event) {
   if (isAntonConfigError(message, event)) {
-    return 'No LLM provider is configured for this account. Subscribe with MindsHub or add your own provider in Settings.';
+    return 'No coworker is available. Install a CLI agent (Claude Code, Antigravity, or Codex) and log in, or add a model source key in Settings.';
   }
   const text = String(message || '');
   return text || 'Could not complete this task.';
@@ -161,6 +161,20 @@ function normalizeComposerDisabledConnections(list) {
       name: String(d.name || '').trim(),
     }))
     .filter((d) => d.engine && d.name);
+}
+
+// What to send as the request `model` for a composer picker selection.
+// CLI coworkers reuse their harness id as the picker option id — letting
+// that id through as `model` reaches the CLI as `--model claude-code`,
+// which the CLI rejects (the rejection streams back as the assistant
+// reply). Only model-picker (API-key) selections carry a real model id.
+function modelFieldFor(selection) {
+  // CLI coworkers: forward the explicit CLI model override if one was
+  // picked (`cliModel`, e.g. "sonnet" for claude --model sonnet), never
+  // the picker option id — the default entry's id IS the harness id,
+  // which the CLI would reject as an unknown model.
+  if (selection?.harness) return selection?.cliModel ?? null;
+  return selection?.id ?? null;
 }
 
 const ACCENT_VARS = {
@@ -950,8 +964,19 @@ function AppCore() {
   // MOCK_DATA.models is only a placeholder for the pre-registry, single-
   // task-model display path (currentTaskModel's fallback below).
   const [models, setModels] = useState([]);
+  // Ref mirror for async callbacks (the boot-time settings restore)
+  // that need the real options list at whatever moment they resolve,
+  // without re-running on every models change.
+  const modelsRef = useRef([]);
   const refreshModels = useCallback(async () => {
-    const opts = await fetchModelPickerOptions();
+    // CLI coworkers FIRST (Claude Code, Antigravity — they run on the
+    // user's subscriptions, no API metering), then registry (provider,
+    // model) pairs that Anton/Hermes route through. Order matters:
+    // models[0] is the default coworker for fresh installs/sessions,
+    // and CLI-first is the whole point of the coworker architecture.
+    const [modelOpts, cliOpts] = await Promise.all([fetchModelPickerOptions(), fetchCliCoworkerOptions()]);
+    const opts = [...cliOpts, ...modelOpts];
+    modelsRef.current = opts;
     setModels(opts);
     return opts;
   }, []);
@@ -1150,13 +1175,18 @@ function AppCore() {
   const [selectedScheduleId, setSelectedScheduleId] = useState(null);
   const [selectedProject, setSelectedProject] = useState(null);
   // Starts as the MOCK_DATA placeholder (keeps `selectedModel.name` etc.
-  // safe to read before the registry loads) and swaps to a real registry
-  // pick the first time `models` resolves with the placeholder still active.
+  // safe to read before the registry loads) and swaps to a real option
+  // the first time `models` resolves with the placeholder still active.
+  // models[0] is the first CLI coworker (Claude Code) — CLI-first is the
+  // default execution path; API-key models are the explicit picks.
   const [selectedModel, setSelectedModel] = useState(MOCK_DATA.models[0]);
   useEffect(() => {
     if (models.length === 0) return;
-    const stillPlaceholder = MOCK_DATA.models.some((m) => m.id === selectedModel?.id);
-    if (stillPlaceholder) setSelectedModel(models[0]);
+    // "Placeholder" = anything that isn't a real option from the loaded
+    // list: the MOCK_DATA seed, or a stale settings-restore id (e.g. a
+    // legacy 'claude-sonnet-4-6' defaultModel) that no longer resolves.
+    const isReal = models.some((m) => m.id === selectedModel?.id);
+    if (!isReal) setSelectedModel(models[0]);
   }, [models]); // eslint-disable-line react-hooks/exhaustive-deps
   // In the hosted web shell the FastAPI process IS the host — there
   // is no subprocess to start/stop, and the SPA only loads at all if
@@ -1200,13 +1230,15 @@ function AppCore() {
     fetchSettings().then((data) => {
       if (data && typeof data === 'object') {
         setSettings((prev) => ({ ...prev, ...data }));
+        // Restore the saved default ONLY if it resolves to a real picker
+        // option (registry model or CLI coworker). A stale/legacy id
+        // (e.g. 'claude-sonnet-4-6' from the pre-registry mock era) must
+        // NOT clobber selectedModel — otherwise every send falls back to
+        // harness 'anton' → API keys, defeating the CLI-first default
+        // that the models effect establishes (models[0] = Claude Code).
         const modelId = data.defaultModel || data.planningModel;
-        const m = MOCK_DATA.models.find((x) => x.id === modelId);
-        setSelectedModel(m || {
-          id: modelId,
-          name: modelId || 'Planning model',
-          desc: data.providerLabel ? `${data.providerLabel} planning model` : 'Configured planning model',
-        });
+        const m = modelsRef.current.find((x) => x.id === modelId);
+        if (m) setSelectedModel(m);
       }
     });
   }, []);
@@ -1450,9 +1482,12 @@ function AppCore() {
     const latest = await fetchSettings();
     if (latest && typeof latest === 'object') {
       setSettings((prev) => ({ ...prev, ...latest }));
+      // Same rule as the boot restore: only apply a saved default that
+      // resolves to a real picker option; never clobber the CLI-first
+      // default with a stale legacy model id.
       const modelId = latest.defaultModel || latest.planningModel;
-      const m = MOCK_DATA.models.find((x) => x.id === modelId);
-      setSelectedModel(m || { id: modelId, name: modelId || 'Planning model', desc: 'Configured planning model' });
+      const m = modelsRef.current.find((x) => x.id === modelId);
+      if (m) setSelectedModel(m);
     }
     return result;
   }, [settings]);
@@ -1479,8 +1514,20 @@ function AppCore() {
     }
     return selectedProject;
   })();
-  const currentTaskModel = currentTask?.model
-    ? (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: 'Configured planning model' })
+  // Resolve the task's stored (harness, model) pair back to a picker
+  // option. CLI tasks store the coworker in `harness` and the CLI model
+  // override (or null = CLI default) in `model`, so match on that pair
+  // first; registry picks still resolve by option id.
+  const currentTaskModel = (currentTask?.model || currentTask?.harness)
+    ? (
+      (currentTask.harness
+        && models.find((m) => m.harness === currentTask.harness
+          && (m.cliModel ?? null) === (currentTask.model ?? null)))
+      || models.find((m) => m.id === currentTask.model)
+      || (currentTask.model
+        ? { id: currentTask.model, name: currentTask.model, desc: 'Configured planning model' }
+        : selectedModel)
+    )
     : selectedModel;
 
   useEffect(() => {
@@ -1669,10 +1716,16 @@ function AppCore() {
           const enriched = mergeConvTurns(id, fromServer);
           const reconciled = reconcileTaskMessages(enriched, isLive, isServerInFlight);
           const dc = Array.isArray(fresh.disabledConnections) ? fresh.disabledConnections : undefined;
+          // Coworker selection persists per conversation: the server
+          // stamps each assistant message with the harness that made it,
+          // so the last one is the conversation's active coworker (the
+          // client-side task.harness is lost on app reload otherwise).
+          const lastHarness = [...fresh.messages].reverse().find((m) => m.role === 'assistant' && m.harness)?.harness;
           setTasks((prev) => prev.map((t) =>
             t.id === id ? {
               ...t,
               messages: reconciled,
+              ...(lastHarness && !t.harness ? { harness: lastHarness } : {}),
               ...(dc !== undefined ? { disabledConnections: dc } : {}),
             } : t
           ));
@@ -1790,7 +1843,8 @@ function AppCore() {
           ],
       projectName: selectedProject?.name || 'general',
       projectPath: selectedProject?.path || null,
-      model: selectedModel?.id || null,
+      model: modelFieldFor(selectedModel),
+      harness: selectedModel?.harness || 'anton',
       attachments: [],
     }, ...prev]);
     setActiveTaskId(tempId);
@@ -2031,7 +2085,8 @@ function AppCore() {
           ],
       projectName: selectedProject?.name || 'general',
       projectPath: selectedProject?.path || null,
-      model: selectedModel?.id || null,
+      model: modelFieldFor(selectedModel),
+      harness: selectedModel?.harness || 'anton',
       attachments: [],
     }, ...prev]);
     setActiveTaskId(tempId);
@@ -2198,7 +2253,8 @@ function AppCore() {
         ],
         projectPath: effectiveProjectPath,
         projectName: effectiveProjectName,
-        model: selectedModel?.id ?? null,
+        model: modelFieldFor(selectedModel),
+        harness: selectedModel?.harness || 'anton',
         attachments: [],
         disabledConnections: [],
         updatedAt: new Date().toISOString(),
@@ -2261,7 +2317,8 @@ function AppCore() {
       messages: [],
       projectPath: effectiveProjectPath,
       projectName: effectiveProjectName,
-      model: selectedModel?.id ?? null,
+      model: modelFieldFor(selectedModel),
+      harness: selectedModel?.harness || 'anton',
       attachments: sendingAttachments,
       disabledConnections: disabledForSend,
       // Stamp a client-side timestamp so the Sidebar's sort-by-
@@ -2327,7 +2384,8 @@ function AppCore() {
       conversationId: hasPendingFiles ? taskId : undefined,
       projectName: effectiveProjectName,
       projectPath: effectiveProjectPath,
-      model: selectedModel?.id,
+      model: modelFieldFor(selectedModel),
+      harness: selectedModel?.harness || 'anton',
       attachmentIds,
       disabledConnections: disabledForSend,
       onEvent(ev) {
@@ -2518,7 +2576,8 @@ function AppCore() {
     const taskProjectPath = currentTask.projectPath
       || currentTaskProject?.path
       || null;
-    const taskModel = currentTask.model || selectedModel?.id || null;
+    const taskModel = currentTask.model || modelFieldFor(selectedModel);
+    const taskHarness = currentTask.harness || selectedModel?.harness || 'anton';
 
     let sendingAttachments, attachmentIds;
     try {
@@ -2613,6 +2672,7 @@ function AppCore() {
       projectName: taskProjectName,
       projectPath: taskProjectPath,
       model: taskModel,
+      harness: taskHarness,
       attachmentIds,
       disabledConnections: disabledForSend,
       onEvent(ev) {
@@ -2704,15 +2764,21 @@ function AppCore() {
     });
   };
 
-  // Live model switch from the composer's picker, mid-conversation.
-  // Updates the global default (so new tasks pick it up too) AND the
-  // active task's stored model — handleSendInTask reads
-  // `currentTask.model || selectedModel?.id`, so the very next message
-  // in this conversation goes out on the newly picked model.
+  // Live coworker/model switch from the composer's picker, mid-
+  // conversation. `model.harness` is set for CLI coworker entries
+  // (Claude Code) that have no provider-registry model of their own;
+  // absent, it's a registry (provider, model) pick that routes through
+  // the default agent harness. Updates the global default (new tasks
+  // pick it up) AND the active task's stored pick — handleSendInTask
+  // reads `currentTask.model`/`currentTask.harness` (falling back to
+  // selectedModel), so the very next message in this conversation goes
+  // out on the newly picked coworker.
   const handleChangeTaskModel = (model) => {
     setSelectedModel(model);
     if (currentTask) {
-      setTasks((prev) => prev.map((t) => (t.id === currentTask.id ? { ...t, model: model.id } : t)));
+      setTasks((prev) => prev.map((t) => (t.id === currentTask.id
+        ? { ...t, model: modelFieldFor(model), harness: model.harness || 'anton' }
+        : t)));
     }
   };
 
