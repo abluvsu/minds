@@ -24,6 +24,8 @@ export const IPC = {
   // Server
   SERVER_RESTART: 'server:restart',
   SERVER_UPDATE_STATUS: 'server:update-status',
+  SERVER_UNRECOVERABLE: 'server:unrecoverable',
+  SERVER_DEV_MODE: 'server:dev-mode',
 
   // Auth
   AUTH_GET_ACCESS_TOKEN: 'auth:get-access-token',

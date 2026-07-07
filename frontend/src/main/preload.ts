@@ -76,6 +76,16 @@ contextBridge.exposeInMainWorld('antontron', {
 
   // Server
   restartServer: () => ipcRenderer.invoke(IPC.SERVER_RESTART),
+  onServerUnrecoverable: (cb: () => void) => {
+    const listener = () => cb();
+    ipcRenderer.on(IPC.SERVER_UNRECOVERABLE, listener);
+    return () => ipcRenderer.removeListener(IPC.SERVER_UNRECOVERABLE, listener);
+  },
+  onServerDevMode: (cb: () => void) => {
+    const listener = () => cb();
+    ipcRenderer.on(IPC.SERVER_DEV_MODE, listener);
+    return () => ipcRenderer.removeListener(IPC.SERVER_DEV_MODE, listener);
+  },
 
   // UI Updates
   checkForUpdate: () => ipcRenderer.invoke(IPC.UI_UPDATE_CHECK),

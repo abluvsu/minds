@@ -50,11 +50,12 @@ async function main() {
   // in vite.config.ts which maps `/` to `/index-web.html` — so the
   // bare URL is the canonical one.
   viteChild = spawn(
-    'npx',
+    process.platform === 'win32' ? 'npx.cmd' : 'npx',
     ['vite', 'dev', 'src/renderer', '--open', '/'],
     {
       stdio: 'inherit',
       env: { ...process.env, BUILD_TARGET: 'web' },
+      shell: process.platform === 'win32'
     },
   );
 

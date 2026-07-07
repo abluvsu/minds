@@ -153,6 +153,30 @@ export async function serverDiagnostics(): Promise<ServerDiagnostics> {
   };
 }
 
+// ── Server lifecycle IPC subscriptions ────────────────────────────────
+// Renderer-side listeners for the main process's server-health events.
+// Each returns an unsubscribe function; web shells are no-ops (the web
+// SPA has no main process emitting these).
+
+// Fires when the watchdog gives up on the server (wrong build hash on the
+// port, repeated crashes past backoff). Drives the red "engine stopped
+// responding" card.
+export function onServerUnrecoverable(cb: () => void): () => void {
+  if (isElectron && typeof bridge.onServerUnrecoverable === 'function') {
+    return bridge.onServerUnrecoverable(cb);
+  }
+  return () => {};
+}
+
+// Fires when the app boots against an external dev server (COWORK_DEV_SERVER
+// set) rather than the managed one. Drives the yellow dev-mode banner.
+export function onServerDevMode(cb: () => void): () => void {
+  if (isElectron && typeof bridge.onServerDevMode === 'function') {
+    return bridge.onServerDevMode(cb);
+  }
+  return () => {};
+}
+
 // ---- OS shell -----------------------------------------------------------
 
 export async function openExternal(url: string): Promise<void> {
@@ -241,12 +265,13 @@ export async function saveSettings(content: string): Promise<boolean> {
   return true;
 }
 
-export async function restartServer(): Promise<void> {
+export async function restartServer(): Promise<{ ok: boolean; reason?: string }> {
   if (isElectron && typeof bridge.restartServer === 'function') {
-    await bridge.restartServer();
+    return bridge.restartServer();
   }
   // Web deployments don't need a restart — the server reads .env on
   // each request in that context.
+  return { ok: false, reason: 'unsupported' };
 }
 
 export interface InstallStatus {
@@ -497,6 +522,8 @@ export const host = {
   readSettings,
   saveSettings,
   restartServer,
+  onServerUnrecoverable,
+  onServerDevMode,
   checkInstall,
   checkConfigured,
   validateProvider,

@@ -15,3 +15,6 @@ export interface RecommendedModels {
  * for minds-cloud). Returns null if the request fails.
  */
 export function fetchRecommendedModels(): Promise<RecommendedModels | null>;
+
+export function fetchSessions(): Promise<unknown>;
+export function fetchInFlightList(): Promise<string[]>;

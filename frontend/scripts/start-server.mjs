@@ -106,6 +106,7 @@ export async function start({ readyTimeoutMs = 15000 } = {}) {
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true,
+    shell: process.platform === 'win32'
   });
 
   child.stdout.on('data', (d) => {

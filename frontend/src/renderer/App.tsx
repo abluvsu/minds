@@ -7,6 +7,8 @@ import ThemeSelect, { type ThemePreset } from './pages/arcade/ThemeSelect';
 import OnboardingScreen from './pages/arcade/OnboardingScreen';
 import LaunchScreen from './pages/arcade/LaunchScreen';
 import CoworkApp from './CoworkApp';
+import { EngineStatusCard } from './components/EngineStatusCard';
+import { DevModeBanner } from './components/DevModeBanner';
 import { host } from './platform/host';
 import { persistSkin } from './lib/skins';
 import type { SpriteName } from './pages/arcade/sprites';
@@ -201,6 +203,11 @@ export default function App() {
 
   return (
     <>
+      {/* Engine-health overlays — mounted at the app-shell root so they
+          sit above every page and self-manage visibility via IPC. */}
+      <DevModeBanner />
+      <EngineStatusCard />
+
       {/* Top-of-window drag overlay only matters for the arcade pages,
           which don't have their own draggable chrome. The cowork page
           provides drag via its sidebar header, so we skip this overlay
