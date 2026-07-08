@@ -4,7 +4,7 @@
 	ignore = all
 [submodule "backend/core_api"]
 	path = backend/core_api
-	url = https://github.com/mindsdb/cowork-server
+	url = https://github.com/abluvsu/cowork-server.git
 	ignore = all
 [submodule "backend/core_agent"]
 	path = backend/core_agent
