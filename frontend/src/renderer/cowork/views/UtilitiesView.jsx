@@ -867,7 +867,7 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
     <div style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 10 }}>
       {!data.publishReady && (
         <div style={{ padding: 12, border: '1px solid #F0C2B5', borderRadius: 9, background: '#FFF7F4', color: '#8F321A', fontSize: 13 }}>
-          Configure a Minds API key in Settings before publishing.
+          Publishing artifacts requires an API key configured by your administrator.
         </div>
       )}
       {(data.artifacts || []).length ? (data.artifacts || []).map((artifact) => (

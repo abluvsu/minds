@@ -29,7 +29,6 @@ import { normalizeArtifactRecord } from '../lib/artifactPaths';
 import { host } from '../../platform/host';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { harnessLabel } from '../lib/agentLabel';
-import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 
 // Token shorthand mapped to our globals.css custom properties so the same
 // inline-styled JSX picks up the active theme.
@@ -1436,8 +1435,7 @@ export default function ChatView({
                         color: T.ink2,
                       }}>
                         Install a CLI agent (Claude Code, Antigravity, or Codex) and log in,
-                        or add a model source API key in Settings. MindsHub subscription is
-                        not used.
+                        or add a model source API key in Settings.
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
                         <button

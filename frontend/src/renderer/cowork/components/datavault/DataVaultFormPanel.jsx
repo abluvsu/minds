@@ -22,7 +22,7 @@ import {
   getSelectedMethod, subscribeSelectedMethod, setSelectedMethod,
 } from './formStore';
 
-import { saveConnector, startGoogleDriveAuth, startGoogleCalendarAuth, startGmailAuth, startGoogleAdsAuth, startGoogleAnalyticsAuth, startGcpAuth, fetchIntegrations, fetchDatasources, startConnectorOAuth, pollConnectorOAuth } from '../../api';
+import { saveConnector, startGoogleDriveAuth, startGoogleCalendarAuth, startGmailAuth, startGoogleAdsAuth, startGoogleAnalyticsAuth, startGcpAuth, fetchIntegrations, fetchDatasources, startConnectorOAuth, pollConnectorOAuth, pollOAuthStatus } from '../../api';
 import { host } from '../../../platform/host';
 
 const BROWSER_OAUTH_START = {
@@ -127,6 +127,22 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     }
   }, [spec?.form_id]);
 
+  // OA-2: Trigger SYSTEM browser for OAuth sign-in without client-side polling.
+  const lastOpenedUrlRef = useRef(null);
+  useEffect(() => {
+    if (spec?._oauth_url && spec?._is_probing) {
+      if (lastOpenedUrlRef.current !== spec._oauth_url) {
+        lastOpenedUrlRef.current = spec._oauth_url;
+        try {
+          host.openExternal(spec._oauth_url).catch(() => {});
+        } catch (e) {}
+      }
+    }
+    if (!spec?._is_probing) {
+      lastOpenedUrlRef.current = null;
+    }
+  }, [spec?._oauth_url, spec?._is_probing]);
+
   // Status toast disabled — LLM feedback should land in the chat
   // only, not duplicated inside the form panel. The chat already
   // surfaces every progress / tool-result event, and a toast inside
@@ -184,9 +200,16 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       return;
     }
 
+    const activeMethodSpec = (() => {
+      const id = authMethod;
+      if (!id || !Array.isArray(spec.methods)) return null;
+      return spec.methods.find((m) => m.id === id) || null;
+    })();
+    const isOauthLaunch = activeMethodSpec?.submit_action === 'oauth_launch';
+
     // Built-in browser OAuth — user clicked Submit after filling any
     // required fields (e.g. developer token for Google Ads).
-    if (authMethod === 'browser_oauth_builtin' && kind === 'primary') {
+    if (authMethod === 'browser_oauth_builtin' && !isOauthLaunch && kind === 'primary') {
       const engine = spec.engine || spec._connector_id || 'google_drive';
       const startFn = BROWSER_OAUTH_START[engine];
       if (!startFn) { setError(`No OAuth start handler for engine "${engine}".`); return; }
@@ -237,11 +260,6 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     // values (Pattern B — BYOK), call the main-process helper, and
     // augment the values with the resulting refresh_token + scope
     // so the vault sees a complete credentials payload.
-    const activeMethodSpec = (() => {
-      const id = authMethod;
-      if (!id || !Array.isArray(spec.methods)) return null;
-      return spec.methods.find((m) => m.id === id) || null;
-    })();
     // Modify-flow synthetic method (`__edit_current__`) carries
     // `_underlying_method` — the saved record's real auth method id.
     // Server-side validation rejects unknown ids, so we always send
@@ -251,7 +269,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     // (non-synthetic) methods so create-flow behaviour is unchanged.
     const wireMethodId = activeMethodSpec?._underlying_method || authMethod;
     const connectionName = spec._existing_name || spec.name || '';
-    if (activeMethodSpec?.submit_action === 'oauth_launch' && kind === 'primary') {
+    if (isOauthLaunch && authMethod !== 'browser_oauth_builtin' && kind === 'primary') {
       const oauthMeta = activeMethodSpec.oauth || {};
       const clientId = oauthMeta.client_id || (values && values.client_id) || '';
       const clientSecret = oauthMeta.client_secret || (values && values.client_secret) || undefined;
@@ -707,12 +725,47 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             </button>
           </div>
         )}
-        <DataVaultForm
-          spec={spec}
-          busy={busy}
-          onAction={handleAction}
-          conversationId={conversationId}
-          onMethodChange={async (methodId) => {
+        {spec?._oauth_url && spec?._is_probing ? (
+          <div style={{
+            display: 'flex', flexDirection: 'column', gap: 14,
+            padding: '30px 14px', alignItems: 'center', textAlign: 'center',
+            fontFamily: FONT_BODY,
+          }}>
+            <span
+              aria-hidden
+              style={{
+                width: 28, height: 28, borderRadius: '50%',
+                border: '3px solid color-mix(in srgb, var(--accent) 30%, transparent)',
+                borderTopColor: 'var(--accent)',
+                animation: 'dvf-spin 720ms linear infinite',
+              }}
+            />
+            <div style={{ fontSize: 13.5, color: 'var(--ink)' }}>
+              {spec.status_text || 'Waiting for Google sign-in…'}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                try { host.openExternal(spec._oauth_url).catch(() => {}); } catch {}
+              }}
+              style={{
+                background: 'transparent', border: 0, padding: 0,
+                color: 'var(--accent)', cursor: 'pointer',
+                fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
+                marginTop: 4, textDecoration: 'none',
+              }}
+              onMouseOver={(e) => e.currentTarget.style.textDecoration = 'underline'}
+              onMouseOut={(e) => e.currentTarget.style.textDecoration = 'none'}
+            >Reopen sign-in page</button>
+          </div>
+        ) : (
+          <DataVaultForm
+            spec={spec}
+            busy={busy}
+            onAction={handleAction}
+            conversationId={conversationId}
+            onMethodChange={async (methodId) => {
+
             if (methodId !== 'browser_oauth_builtin') return;
             // Methods with fields wait for Submit — handleAction takes over.
             const method = Array.isArray(spec?.methods) ? spec.methods.find((m) => m.id === methodId) : null;

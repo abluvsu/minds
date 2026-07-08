@@ -7,35 +7,29 @@ import ModelSourcesPanel from '../components/settings/ModelSourcesPanel';
 import CliAgentsPanel from '../components/settings/CliAgentsPanel';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
-import { MINDS_API_KEY_URL } from '../../lib/mindsUrls';
 import { getUIVersion, isElectron } from '../../platform/host';
 
 // Provider preset → underlying canonical fields. The Settings UI uses
 // hyphenated provider types; the API layer translates those to the
 // server's enum values when saving.
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
-const MINDS_API_PATH_SUFFIX = '/v1';
 
 const PROVIDER_PRESETS = [
   { value: 'anthropic',         label: 'Anthropic' },
   { value: 'openai',            label: 'OpenAI' },
   { value: 'gemini',            label: 'Gemini' },
   { value: 'openai-compatible', label: 'Compatible' },
-  { value: 'minds-cloud',       label: 'Minds Cloud' },
 ];
 
 // Default models we drop into the planning/coding fields when the user
 // switches providers. Empty strings mean "user must fill in" (true for
-// generic openai-compatible and minds-cloud where the model name depends
+// generic openai-compatible where the model name depends
 // on the deployment).
 const PROVIDER_DEFAULTS = {
   anthropic:           { planning: 'claude-sonnet-4-6', coding: 'claude-haiku-4-5-20251001' },
   openai:              { planning: 'gpt-5.5',           coding: 'gpt-5.5-mini' },
   gemini:              { planning: 'gemini-2.5-pro',    coding: 'gemini-2.5-flash' },
   'openai-compatible': { planning: '',                  coding: '' },
-  // No minds-cloud entry: MindsHub model names are owned by the backend.
-  // applyProviderPreset reads settings.recommendedPair['minds-cloud']
-  // (from /settings/recommended-models) so nothing is maintained here.
 };
 
 // Known model lists per provider — surfaced as quick-pick chips below
@@ -44,68 +38,30 @@ const PROVIDER_MODELS = {
   anthropic:     ['claude-sonnet-4-6', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-haiku-4-5-20251001'],
   openai:        ['gpt-5.5', 'gpt-5.5-mini', 'o3', 'o4-mini'],
   gemini:        ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-3-flash-preview'],
-  // Minds Cloud quick-picks come from the server's `recommendedModels`
-  // bucket (the full `latest:*` alias list) — rendered by the dedicated
-  // minds-cloud panel further down rather than this generic chip row.
 };
 
 // Per-provider credential relevance map. Drives the Required / Optional /
 // Unused badges and the dimming of unrelated rows in the Credentials card.
 const CREDENTIAL_RELEVANCE = {
-  // Minds-related credentials live in their own card but are only on
-  // the auth path for the `minds-cloud` preset. Marking them `unused`
-  // for everything else dims the rows (and drops the Optional badge) so
-  // attention sticks to the credentials the active provider actually
-  // touches. The fields stay editable for users who keep a Minds key
-  // around for routing/publishing.
   anthropic: {
     anthropicApiKey: 'required',
     openaiApiKey:    'unused',
     openaiBaseUrl:   'unused',
-    mindsApiKey:     'unused',
-    mindsUrl:        'unused',
-    mindsMindName:   'unused',
-    mindsDatasource: 'unused',
   },
   openai: {
     anthropicApiKey: 'unused',
     openaiApiKey:    'required',
     openaiBaseUrl:   'unused',
-    mindsApiKey:     'unused',
-    mindsUrl:        'unused',
-    mindsMindName:   'unused',
-    mindsDatasource: 'unused',
   },
   gemini: {
     anthropicApiKey: 'unused',
     openaiApiKey:    'required',
     openaiBaseUrl:   'auto',
-    mindsApiKey:     'unused',
-    mindsUrl:        'unused',
-    mindsMindName:   'unused',
-    mindsDatasource: 'unused',
   },
   'openai-compatible': {
     anthropicApiKey: 'unused',
     openaiApiKey:    'required',
     openaiBaseUrl:   'required',
-    mindsApiKey:     'unused',
-    mindsUrl:        'unused',
-    mindsMindName:   'unused',
-    mindsDatasource: 'unused',
-  },
-  'minds-cloud': {
-    // OpenAI key + base URL are populated as a side-effect of the Minds
-    // preset (the backend reuses the openai-compatible pipeline). They
-    // aren't something the user maintains — keep them dimmed so attention
-    // stays on the Minds credentials.
-    anthropicApiKey: 'unused',
-    openaiApiKey:    'unused',
-    openaiBaseUrl:   'unused',
-    mindsApiKey:     'required',
-    mindsUrl:        'required',
-    mindsMindName:   'optional',
-    mindsDatasource: 'optional',
   },
 };
 
@@ -114,14 +70,8 @@ function inferProviderPreset(s) {
   const baseUrl = (s.openaiBaseUrl || '').trim();
   if (provider === 'anthropic') return 'anthropic';
   if (provider === 'openai') return 'openai';
-  // The backend DB stores "minds_cloud" for MindsHub; treat it the same
-  // as detecting openai-compatible + a mindshub base URL.
-  if (provider === 'minds_cloud' || provider === 'minds-cloud') return 'minds-cloud';
   if (provider === 'openai-compatible' || provider === 'openai_compatible') {
     if (baseUrl.startsWith('https://generativelanguage.googleapis.com/')) return 'gemini';
-    if (baseUrl.includes('mdb.ai') || baseUrl.includes('mindshub.ai') || baseUrl.endsWith(MINDS_API_PATH_SUFFIX) && (s.mindsApiKey || s.mindsUrl)) {
-      return 'minds-cloud';
-    }
     return 'openai-compatible';
   }
   return 'anthropic';
@@ -134,13 +84,10 @@ function isProviderConfigured(preset, s) {
   if (preset === 'openai') return Boolean(trim(s.openaiApiKey));
   if (preset === 'gemini') return Boolean(trim(s.openaiApiKey));
   if (preset === 'openai-compatible') return Boolean(trim(s.openaiApiKey) && trim(s.openaiBaseUrl));
-  if (preset === 'minds-cloud') return Boolean(trim(s.mindsApiKey) && trim(s.mindsUrl));
   return false;
 }
 
 function applyProviderPreset(preset, settings, setSetting) {
-  // 1. Wire the canonical provider field(s) to the underlying backend
-  //    representation. Gemini + Minds Cloud are openai-compatible presets.
   if (preset === 'anthropic') {
     setSetting('planningProvider', 'anthropic');
     setSetting('codingProvider', 'anthropic');
@@ -158,24 +105,8 @@ function applyProviderPreset(preset, settings, setSetting) {
     if ((settings.openaiBaseUrl || '').startsWith('https://generativelanguage.googleapis.com/')) {
       setSetting('openaiBaseUrl', '');
     }
-  } else if (preset === 'minds-cloud') {
-    setSetting('planningProvider', 'minds-cloud');
-    setSetting('codingProvider', 'minds-cloud');
-    const mindsUrl = (settings.mindsUrl || 'https://api.mindshub.ai').replace(/\/+$/, '');
-    setSetting('mindsUrl', mindsUrl);
-    setSetting('openaiBaseUrl', `${mindsUrl}${MINDS_API_PATH_SUFFIX}`);
-    // The server's build_llm_client reads minds_api_key (not
-    // openai_api_key) for the minds_cloud provider, so we no longer
-    // copy the Minds key into the OpenAI slot — that would clobber
-    // any real OpenAI key the user configures separately.
   }
 
-  // 2. Reset planning + coding models to the new provider's defaults so
-  //    the user never lands on a "claude-sonnet-4-6 on OpenAI" mismatch.
-  //    The backend's recommendedPair (from /settings/recommended-models) is
-  //    authoritative — used for minds-cloud, whose names live only on the
-  //    server. PROVIDER_DEFAULTS is the fallback for the direct BYOK
-  //    providers; for those without a default we clear the fields.
   const recPair = settings.recommendedPair?.[preset];
   const defaults = recPair
     ? { planning: recPair[0] || '', coding: recPair[1] || '' }
@@ -601,10 +532,9 @@ function SetBadge({ hasValue, active }) {
 
 // ───────────────────────── Multi-provider helpers ─────────────────────────
 
-const PROVIDER_TYPE_ORDER = ['minds-cloud', 'anthropic', 'openai', 'gemini', 'openai-compatible'];
+const PROVIDER_TYPE_ORDER = ['anthropic', 'openai', 'gemini', 'openai-compatible'];
 
 const PROVIDER_TYPE_DESC = {
-  'minds-cloud': 'Routes via MindsHub with smart model selection.',
   anthropic: 'Use Claude models with your Anthropic API key.',
   openai: 'Use GPT models with your OpenAI API key.',
   gemini: 'Use Gemini models through Google\'s OpenAI-compatible endpoint.',
@@ -612,25 +542,15 @@ const PROVIDER_TYPE_DESC = {
 };
 
 const GET_KEY_URL = {
-  'minds-cloud': MINDS_API_KEY_URL,
   anthropic: 'https://console.anthropic.com/settings/keys',
   openai: 'https://platform.openai.com/api-keys',
   gemini: 'https://aistudio.google.com/apikey',
   'openai-compatible': null,
 };
 
-const PROTECTED_PROVIDER_TYPES = new Set(['minds-cloud']);
-
 function makeEmptyProvider(type) {
   const base = { type, apiKey: '', isDefault: false };
   if (type === 'openai-compatible') base.baseUrl = '';
-  if (type === 'minds-cloud') {
-    base.mindsUrl = 'https://api.mindshub.ai';
-    base.mindsMindName = '';
-    base.mindsDatasource = '';
-    base.mindsDatasourceEngine = '';
-    base.mindsSslVerify = true;
-  }
   return base;
 }
 
@@ -658,7 +578,6 @@ function ensureDefaultInvariant(arr) {
 }
 
 const PROVIDER_LABELS_LOCAL = {
-  'minds-cloud': 'MindsHub',
   anthropic: 'Anthropic',
   openai: 'OpenAI',
   gemini: 'Gemini',
@@ -672,8 +591,8 @@ function CredentialRow({ title, subtitle, status, hasValue, children }) {
   const dimmed = status === 'unused';
   // The Set badge only glows when this credential is on the active
   // provider's actual auth path — i.e. the active preset *requires* it
-  // (or auto-manages it). `optional` credentials (e.g. Minds API key
-  // while on Anthropic) and `unused` ones show Set in a muted style so
+  // (or auto-manages it). `optional` credentials and `unused` ones show
+  // Set in a muted style so
   // the glow stays meaningful: "this is what's authenticating you now."
   const setActive = hasValue && (status === 'required' || status === 'auto');
   const titleNode = (
@@ -697,8 +616,6 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
   const [tested, setTested] = useState(false);
   const [addPickerOpen, setAddPickerOpen] = useState(false);
   const [bannerVisible, setBannerVisible] = useState(false);
-  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
-  const [loggingOut, setLoggingOut] = useState(false);
   // Per-role "use a typed model id" flag. Sticky so picking Other…
   // keeps the text input visible even when the typed value is empty.
   const [modelInputMode, setModelInputMode] = useState({ planning: false, coding: false });
@@ -756,7 +673,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
   };
   const canonicalProviderForRole = (role) => providerValueToType(
     role === 'planning' ? settings.planningProvider : settings.codingProvider,
-  ) || 'minds-cloud';
+  ) || 'anthropic';
   const canonicalModelForRole = (role) => {
     if (role === 'planning') return settings.planningModel ?? settings.defaultModel ?? '';
     return settings.codingModel ?? '';
@@ -770,7 +687,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
     return canonicalModelForRole(role) || fallback || '';
   };
   const setRoleDriver = (role, providerType, model) => {
-    const normalizedType = providerValueToType(providerType) || 'minds-cloud';
+    const normalizedType = providerValueToType(providerType) || 'anthropic';
     const nextModel = model || '';
     if (role === 'planning') {
       setSetting('planningProvider', normalizedType);
@@ -793,17 +710,9 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
       : !!(p.apiKey || '').trim()
   );
 
-  // The provider that drives roles in default mode. Mirrors the
-  // server's _default_provider: prefer MindsHub when it's actually
-  // keyed, otherwise fall back to the first configured provider so
-  // adding e.g. an Anthropic key "just works" without touching the
-  // custom-model controls. Falls back to MindsHub when nothing is
-  // configured so the unconfigured baseline still surfaces a row.
   const defaultModeProviderType = (() => {
-    const minds = providers.find((p) => p.type === 'minds-cloud');
-    if (minds && providerConfigured(minds)) return 'minds-cloud';
     const configured = providers.find(providerConfigured);
-    return configured ? configured.type : 'minds-cloud';
+    return configured ? configured.type : 'anthropic';
   })();
 
   // Which provider types actually drive planning + coding right now.
@@ -835,15 +744,9 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
     (p) => p.type === 'openai-compatible' && !(p.name || '').trim(),
   );
 
-  // MindsHub is the permanent baseline — always show its row so the
-  // user has a path to a working provider without having to add one.
-  useEffect(() => {
-    if (!providers.some((p) => p.type === 'minds-cloud')) {
-      updateProviders([makeEmptyProvider('minds-cloud'), ...providers]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [providers.length, providers.some((p) => p.type === 'minds-cloud')]);
-
+  const googleOAuthClientId = settings.google_oauth_client_id ?? '';
+  const googleOAuthClientSecret = settings.google_oauth_client_secret ?? '';
+  const googleUnlockActive = Boolean(googleOAuthClientId.trim() && googleOAuthClientSecret.trim());
   // Auto-dismiss the status banner ~3s after a clean success. Failures
   // stay sticky so the user actually sees what's broken. Cancelled on
   // re-test by the dependency change.
@@ -863,8 +766,8 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
     updateProviders(providers.map((p) => (p.type === type ? { ...p, [key]: value } : p)));
     // Sync provider card API keys to the individual settings so both
     // stay in sync. Without this, the providers JSON blob gets the new
-    // key but the individual openai_api_key / anthropic_api_key /
-    // minds_api_key setting stays stale.
+    // key but the individual openai_api_key / anthropic_api_key
+    // setting stays stale.
     if (key === 'apiKey' && value !== '***') {
       const settingKey = providerTypeToKeyField(type);
       if (settingKey) setSetting(settingKey, value);
@@ -880,27 +783,8 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
     setAddPickerOpen(false);
   };
   const removeProvider = (type) => {
-    // MindsHub stays as a permanent option even when unconfigured —
-    // it's the recommended path and users shouldn't be able to lose it.
-    if (PROTECTED_PROVIDER_TYPES.has(type)) return;
     setLlmDirty(true);
     const next = providers.filter((p) => p.type !== type);
-
-    // Role settings referencing the removed provider get re-pointed
-    // at MindsHub with its recommended pair for the role.
-    const adjustedOverrides = {};
-    for (const role of ['planning', 'coding']) {
-      const o = roleOverride(role);
-      if (roleProviderType(role) === type) {
-        const pair = recommendedPair['minds-cloud'] || ['', ''];
-        const fallback = pair[role === 'planning' ? 0 : 1] || (recommendedModels['minds-cloud']?.[0] || '');
-        adjustedOverrides[role] = { providerType: 'minds-cloud', model: fallback };
-        setRoleDriver(role, 'minds-cloud', fallback);
-      } else {
-        if (o) adjustedOverrides[role] = o;
-      }
-    }
-    setSetting('modelOverrides', adjustedOverrides);
     updateProviders(next);
   };
 
@@ -1010,26 +894,6 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
   // Sign out: clears the persisted refresh token + every credential
   // in ~/.anton/.env (ANTON_TERMS_CONSENT and prefs stay), then
   // reloads so App.tsx re-routes the user to the onboarding flow.
-  const handleLogout = async () => {
-    if (loggingOut) return; // Guard against double-fire (Enter / re-click).
-    setLoggingOut(true);
-    try {
-      await host.logout();
-    } catch {
-      // Swallow — partial logout is still worth recovering from on the
-      // boot path, and the reload below puts us back through it.
-    }
-    // Exactly ONE reload must happen, or the two compete and leave the
-    // page stuck on this confirm modal (flaky in packaged builds). On
-    // Electron the main process drives webContents.reload() itself
-    // after the IPC reply — that's the reliable path, so the renderer
-    // must NOT also reload. On web there's no main process, so we
-    // reload here.
-    if (host.isWeb) {
-      window.location.reload();
-    }
-  };
-
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <div style={{
@@ -1140,6 +1004,63 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                 </div>
               );
             })()}
+
+            <CollapsibleGroup title="Google Sign-In (one-time unlock)">
+              <Section
+                title="Google Sign-In (one-time unlock)"
+                subtitle="Provide a Google client ID and secret once so Google connectors can sign in with one click."
+              >
+                <div style={{ display: 'grid', gap: 10, marginBottom: 16 }}>
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                    1) Go to console.cloud.google.com, create or pick a project, and enable Gmail, Ads, Analytics, Drive, and Calendar APIs.
+                  </div>
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                    2) Open OAuth consent screen, choose External, and add yourself as a test user.
+                  </div>
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                    3) Create OAuth credentials → Desktop app, then paste the Client ID and Client secret here. Google may show an unverified app warning in test mode — click Continue, it is your own app.
+                  </div>
+                </div>
+                {googleUnlockActive && (
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 10,
+                    padding: '10px 14px', borderRadius: 999,
+                    background: 'rgba(92, 184, 92, 0.12)',
+                    border: '1px solid rgba(92, 184, 92, 0.24)',
+                    color: '#295127',
+                    marginBottom: 16,
+                    fontSize: 13,
+                    fontWeight: 600,
+                  }}>
+                    Unlocked — Google connectors are one-click now
+                  </div>
+                )}
+                <div style={{ display: 'grid', gap: 14 }}>
+                  <div>
+                    <div style={{ marginBottom: 6, fontSize: 13.5, fontWeight: 600, color: 'var(--text-strong)' }}>
+                      Client ID
+                    </div>
+                    <ClearableTextInput
+                      value={googleOAuthClientId}
+                      onChange={(v) => setSetting('google_oauth_client_id', v)}
+                      placeholder="Enter Google Client ID"
+                      ariaLabel="Google client ID"
+                    />
+                  </div>
+                  <div>
+                    <div style={{ marginBottom: 6, fontSize: 13.5, fontWeight: 600, color: 'var(--text-strong)' }}>
+                      Client secret
+                    </div>
+                    <ApiKeyInput
+                      value={googleOAuthClientSecret}
+                      onChange={(v) => setSetting('google_oauth_client_secret', v)}
+                      placeholder="Enter Google Client secret"
+                      revealName="google_oauth_client_secret"
+                    />
+                  </div>
+                </div>
+              </Section>
+            </CollapsibleGroup>
 
             <CollapsibleGroup title="Model Sources">
               <ModelSourcesPanel onChanged={onModelSourcesChanged} />
@@ -1313,7 +1234,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                         <div>
                           <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-strong)' }}>Provider</div>
                           <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 4, maxWidth: 480 }}>
-                            Drives planning + coding. Gemini and Minds Cloud are presets that map to OpenAI-compatible with the right base URL.
+                            Drives planning + coding. Gemini is a preset that maps to OpenAI-compatible with the right base URL.
                           </div>
                         </div>
                         {/* Active-provider status pill */}
@@ -1410,7 +1331,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                       title="OpenAI-compatible base URL"
                       subtitle={relevance.openaiBaseUrl === 'auto'
                         ? 'Auto-managed by the selected preset.'
-                        : 'Required for OpenAI-compatible providers unless Minds credentials derive it.'}
+                        : 'Required for OpenAI-compatible providers.'}
                       status={relevance.openaiBaseUrl}
                       hasValue={has('openaiBaseUrl')}
                     >
@@ -1419,62 +1340,6 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                         onChange={(v) => setSetting('openaiBaseUrl', v)}
                         placeholder="https://example.com/v1"
                       />
-                    </CredentialRow>
-                    <CredentialRow
-                      title="Minds API key"
-                      subtitle="Used for Minds-backed routing and publishing."
-                      status={relevance.mindsApiKey}
-                      hasValue={has('mindsApiKey')}
-                    >
-                      <ApiKeyInput
-                        value={settings.mindsApiKey ?? ''}
-                        onChange={(v) => setSetting('mindsApiKey', v)}
-                        placeholder="mdb_••••••••"
-                        revealName="minds"
-                      />
-                    </CredentialRow>
-                    <CredentialRow
-                      title="Minds URL"
-                      subtitle="Base URL for Minds-backed MindsHub Cowork features."
-                      status={relevance.mindsUrl}
-                      hasValue={has('mindsUrl')}
-                    >
-                      <ClearableTextInput
-                        value={settings.mindsUrl ?? 'https://api.mindshub.ai'}
-                        onChange={(v) => setSetting('mindsUrl', v)}
-                        placeholder="https://api.mindshub.ai"
-                      />
-                    </CredentialRow>
-                    <CredentialRow
-                      title="Minds mind"
-                      subtitle="Optional Mind name to use for data-aware tasks."
-                      status={relevance.mindsMindName}
-                      hasValue={has('mindsMindName')}
-                    >
-                      <ClearableTextInput
-                        value={settings.mindsMindName ?? ''}
-                        onChange={(v) => setSetting('mindsMindName', v)}
-                        placeholder="sales_data_expert"
-                      />
-                    </CredentialRow>
-                    <CredentialRow
-                      title="Minds datasource"
-                      subtitle="Optional datasource name and engine."
-                      status={relevance.mindsDatasource}
-                      hasValue={has('mindsDatasource') || has('mindsDatasourceEngine')}
-                    >
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                        <ClearableTextInput
-                          value={settings.mindsDatasource ?? ''}
-                          onChange={(v) => setSetting('mindsDatasource', v)}
-                          placeholder="datasource name"
-                        />
-                        <ClearableTextInput
-                          value={settings.mindsDatasourceEngine ?? ''}
-                          onChange={(v) => setSetting('mindsDatasourceEngine', v)}
-                          placeholder="postgres"
-                        />
-                      </div>
                     </CredentialRow>
                   </CollapsibleGroup>
                 </>
@@ -1567,56 +1432,67 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
               </Section>
             </CollapsibleGroup>
 
-            {host.isElectron && (
-              <CollapsibleGroup title="Account" defaultOpen={false}>
-                <Section
-                  title="Sign out"
-                  subtitle="Disconnect from MindsHub and remove every stored credential on this device. Cowork will return to the onboarding flow on the next launch."
-                >
-                  <button
-                    type="button"
-                    onClick={() => setLogoutConfirmOpen(true)}
-                    disabled={loggingOut}
-                    title="Sign out and clear stored credentials"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 8,
-                      padding: '8px 14px', borderRadius: 8,
-                      fontSize: 13, fontWeight: 600,
-                      color: '#E07060',
-                      background: 'rgba(224,112,96,0.08)',
-                      border: '1px solid rgba(224,112,96,0.35)',
-                      cursor: loggingOut ? 'progress' : 'pointer',
-                      fontFamily: 'inherit',
-                      opacity: loggingOut ? 0.7 : 1,
-                    }}
-                  >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-                      stroke="currentColor" strokeWidth="2"
-                      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                      <polyline points="16 17 21 12 16 7" />
-                      <line x1="21" y1="12" x2="9" y2="12" />
-                    </svg>
-                    {loggingOut ? 'Signing out…' : 'Sign out'}
-                  </button>
-                </Section>
-              </CollapsibleGroup>
-            )}
+
+
+            {/* ── Experimental ────────────────────────────── */}
+            <CollapsibleGroup title="Experimental" defaultOpen={false}>
+              <Section>
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '12px 0',
+                }}>
+                  <div>
+                    <div style={{ fontWeight: 500, marginBottom: 4 }}>HomeOS (Beta)</div>
+                    <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                      Use the new AI Chief of Staff home screen. Replaces the current home view.
+                    </div>
+                  </div>
+                  <label style={{
+                    position: 'relative', display: 'inline-block',
+                    width: 44, height: 24, flexShrink: 0, marginLeft: 16,
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={window.localStorage.getItem('useHomeOS') === 'true'}
+                      onChange={(e) => {
+                        window.localStorage.setItem('useHomeOS', e.target.checked ? 'true' : 'false');
+                        window.location.reload();
+                      }}
+                      style={{ opacity: 0, width: 0, height: 0 }}
+                    />
+                    <span style={{
+                      position: 'absolute', cursor: 'pointer',
+                      top: 0, left: 0, right: 0, bottom: 0,
+                      backgroundColor: window.localStorage.getItem('useHomeOS') === 'true'
+                        ? 'var(--accent, #2563eb)' : 'var(--border, #d1d5db)',
+                      borderRadius: 24, transition: 'background-color 0.2s',
+                    }}>
+                      <span style={{
+                        position: 'absolute', height: 18, width: 18,
+                        left: window.localStorage.getItem('useHomeOS') === 'true' ? 22 : 3,
+                        bottom: 3, backgroundColor: 'white',
+                        borderRadius: '50%', transition: 'left 0.2s',
+                      }} />
+                    </span>
+                  </label>
+                </div>
+              </Section>
+            </CollapsibleGroup>
+
+            {/* Build stamp — Vite-baked globals, verifies the running renderer is fresh. */}
+            <div style={{
+              marginTop: 20, textAlign: 'center',
+              fontSize: 11, color: 'var(--text-muted)', opacity: 0.75,
+              fontFamily: 'var(--font-mono)',
+            }}>
+              Build {typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '?'}
+              {typeof __GIT_HASH__ !== 'undefined' && __GIT_HASH__ ? ` · ${__GIT_HASH__}` : ''}
+              {typeof __BUILD_TIME__ !== 'undefined' && __BUILD_TIME__ ? ` · ${__BUILD_TIME__}` : ''}
+            </div>
           </div>
         </div>
 
-        <ConfirmModal
-          open={logoutConfirmOpen}
-          title="Sign out of Cowork?"
-          message="This clears your stored API keys and disconnects from MindsHub. You'll need to sign in again to keep using Cowork."
-          confirmLabel="Sign out"
-          cancelLabel="Cancel"
-          destructive
-          busy={loggingOut}
-          busyLabel="Signing out…"
-          onConfirm={handleLogout}
-          onClose={() => setLogoutConfirmOpen(false)}
-        />
+
 
         {/* Sticky save bar — sits at the bottom of the panel, glassy
             translucent backdrop so the gravity field hints through it.

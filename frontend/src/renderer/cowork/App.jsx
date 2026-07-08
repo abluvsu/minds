@@ -9,6 +9,7 @@ import Sidebar from './components/Sidebar';
 import MobileShell from './components/MobileShell';
 import { ConfirmModal } from './components/ConfirmModal';
 import HomeView from './views/HomeView';
+import HomeOS from './prototype/HomeOS';
 import ChatView from './views/ChatView';
 import ProjectsView from './views/ProjectsView';
 import ScheduledView from './views/ScheduledView';
@@ -2881,6 +2882,22 @@ function AppCore() {
                 status_text: null,
                 form_error: null,
               });
+            } else if (respStatus === 'oauth_pending') {
+              const match = streamState.bodyText?.match(/```data-vault-form-patch\n([\s\S]*?)\n```/);
+              if (match && match[1]) {
+                try {
+                  const patch = JSON.parse(match[1]);
+                  if (patch.oauth_launch) {
+                    patchDataVaultForm(cid, {
+                      form_id: currentForm.form_id,
+                      oauth_launch: patch.oauth_launch,
+                      _is_probing: true,
+                      status_text: 'Waiting to finish in browser...',
+                      form_error: null,
+                    });
+                  }
+                } catch (e) {}
+              }
             } else if (respStatus === 'retry' || respStatus === 'failed') {
               patchDataVaultForm(cid, {
                 form_id: currentForm.form_id,
@@ -3402,6 +3419,15 @@ function AppCore() {
         background: mainBg,
       }}>
         {route === 'home' && (
+          window.localStorage.getItem('useHomeOS') === 'true' ? (
+            <HomeOS
+              onSend={handleSendFromHome}
+              onSelectTask={selectTask}
+              onOpenSettings={() => setRoute('settings')}
+              greeting={settings.greeting}
+              agentLabel={agentLabel}
+            />
+          ) : (
           <HomeView
             greeting={settings.greeting}
             showDots={showDots}
@@ -3430,6 +3456,7 @@ function AppCore() {
             onShowServerHelp={() => setServerHelpOpen(true)}
             skipIntro={bootIntroDone}
           />
+          )
         )}
 
         {route === 'task' && currentTask && (

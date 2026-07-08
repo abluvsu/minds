@@ -5,11 +5,11 @@
  *
  *   1. **Server (DB)**: snake_case keys, string values, sensitive fields
  *      returned as {is_sensitive: true, is_set: bool} without the value.
- *      Provider enums use underscores: "openai_compatible", "minds_cloud".
+ *      Provider enums use underscores: "openai_compatible".
  *
  *   2. **React state**: camelCase keys, parsed values (booleans, objects).
  *      Sensitive fields masked as "***" when set, empty string when unset.
- *      Provider UI types use hyphens: "openai-compatible", "minds-cloud".
+ *      Provider UI types use hyphens: "openai-compatible".
  *
  *   3. **Provider cards** (providers_json): array of {type, apiKey, baseUrl, ...}
  *      objects that drive the Settings UI cards. Backfilled from individual
@@ -22,8 +22,8 @@
 export const SETTINGS_KEY_MAP = {
   anthropic_api_key: 'anthropicApiKey',
   openai_api_key: 'openaiApiKey',
-  minds_api_key: 'mindsApiKey',
-  minds_url: 'mindsUrl',
+  google_oauth_client_id: 'google_oauth_client_id',
+  google_oauth_client_secret: 'google_oauth_client_secret',
   planning_provider: 'planningProvider',
   planning_model: 'planningModel',
   coding_provider: 'codingProvider',
@@ -57,12 +57,10 @@ const JSON_FIELDS = new Set(['modelOverrides', 'providers']);
 
 const PROVIDER_TO_CLIENT = {
   openai_compatible: 'openai-compatible',
-  minds_cloud: 'minds-cloud',
 };
 
 const PROVIDER_TO_SERVER = {
   'openai-compatible': 'openai_compatible',
-  'minds-cloud': 'minds_cloud',
 };
 
 const PROVIDER_FIELDS = new Set(['planningProvider', 'codingProvider']);
@@ -83,11 +81,6 @@ export function providerTypeToServerValue(value) {
 // SettingsView both import from here. Each entry carries the model ID
 // and a human-readable label for dropdowns.
 export const PROVIDER_MODELS = {
-  // MindsHub model names are owned by the backend, not this repo. The list
-  // is supplied at runtime by `/settings/recommended-models` (the live
-  // MindsHub `/v1/models` set) and overlaid in fetchSettings(). Left empty
-  // so no model names are maintained here.
-  'minds-cloud': [],
   anthropic: [
     { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
     { id: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
@@ -109,9 +102,8 @@ export const PROVIDER_MODELS = {
 };
 
 export const STATIC_SETTINGS = {
-  providerTypes: ['minds-cloud', 'anthropic', 'openai', 'gemini', 'openai-compatible'],
+  providerTypes: ['anthropic', 'openai', 'gemini', 'openai-compatible'],
   providerTypeLabels: {
-    'minds-cloud': 'MindsHub',
     anthropic: 'Anthropic',
     openai: 'OpenAI',
     gemini: 'Gemini',
@@ -122,8 +114,6 @@ export const STATIC_SETTINGS = {
     Object.entries(PROVIDER_MODELS).map(([k, v]) => [k, v.map((m) => m.id)]),
   ),
   recommendedPair: {
-    // minds-cloud defaults come from the backend (recommendedPair) at runtime.
-    'minds-cloud': ['', ''],
     anthropic: ['claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
     openai: ['gpt-5.5', 'gpt-5.5-mini'],
     gemini: ['gemini-2.5-pro', 'gemini-2.5-flash'],
@@ -181,16 +171,8 @@ function backfillProviders(result) {
     ? result.providers.map((p) => ({ ...p, type: providerValueToType(p.type) }))
     : [];
   const hasType = (t) => providers.some((p) => p.type === t);
-  const rawPlanningType = providerValueToType(result.planningProvider);
-  const rawCodingType = providerValueToType(result.codingProvider);
-
-  // When providers are set to openai-compatible but a MindsHub API key
-  // exists, the real provider is minds-cloud (the gateway is OpenAI-
-  // compatible under the hood). Promote so the UI shows a MindsHub card
-  // instead of a phantom empty OpenAI-compatible row.
-  const isMindsBacked = result.mindsApiKey === '***';
-  const planningType = (rawPlanningType === 'openai-compatible' && isMindsBacked) ? 'minds-cloud' : rawPlanningType;
-  const codingType = (rawCodingType === 'openai-compatible' && isMindsBacked) ? 'minds-cloud' : rawCodingType;
+  const planningType = providerValueToType(result.planningProvider);
+  const codingType = providerValueToType(result.codingProvider);
 
   const activeTypes = [planningType, codingType].filter(Boolean);
 
@@ -203,17 +185,7 @@ function backfillProviders(result) {
   if (result.anthropicApiKey === '***' && !hasType('anthropic')) {
     providers.push({ type: 'anthropic', apiKey: '***', isDefault: planningType === 'anthropic' });
   }
-  if (result.mindsApiKey === '***' && !hasType('minds-cloud')) {
-    providers.push({
-      type: 'minds-cloud', apiKey: '***',
-      mindsUrl: (result.mindsUrl || 'https://api.mindshub.ai/v1').replace(/\/v1$/, ''),
-      isDefault: planningType === 'minds-cloud',
-    });
-  }
-  // Skip OpenAI backfill when the active provider is minds-cloud — the
-  // stored openai_api_key may just be the Minds key copied during legacy
-  // onboarding, and showing a phantom OpenAI card for it is confusing.
-  if (result.openaiApiKey === '***' && !hasType('openai') && !isMindsBacked) {
+  if (result.openaiApiKey === '***' && !hasType('openai')) {
     providers.push({ type: 'openai', apiKey: '***', isDefault: planningType === 'openai' });
   }
 
@@ -221,7 +193,6 @@ function backfillProviders(result) {
   for (const p of providers) {
     if (p.type === 'anthropic' && result.anthropicApiKey === '***') p.apiKey = '***';
     if ((p.type === 'openai' || p.type === 'gemini' || p.type === 'openai-compatible') && result.openaiApiKey === '***') p.apiKey = '***';
-    if (p.type === 'minds-cloud' && result.mindsApiKey === '***') p.apiKey = '***';
   }
   if (providers.length > 0 && !providers.some((p) => p.isDefault)) {
     providers[0].isDefault = true;
@@ -266,7 +237,6 @@ export function diffSettingsForWrite(patch, lastFetched) {
  */
 export function providerTypeToKeyField(type) {
   if (type === 'anthropic') return 'anthropicApiKey';
-  if (type === 'minds-cloud') return 'mindsApiKey';
   if (type === 'openai' || type === 'gemini' || type === 'openai-compatible') return 'openaiApiKey';
   return null;
 }

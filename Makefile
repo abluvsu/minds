@@ -31,7 +31,7 @@ export ANTON_REF := $(AGENT_REF)
 # Only inject a non-default anton override (uv rejects a redundant --with).
 _ANTON_WITH := $(if $(filter-out main,$(AGENT_REF)),--with "anton-agent @ git+https://github.com/mindsdb/anton.git@$(AGENT_REF)",)
 
-.PHONY: help setup dev dev-web build dist-mac dist-win docker-build docker-up docker-down flush use pin baseline server server-local app app-local pack-local watch refs
+.PHONY: help setup dev dev-web build dist-mac dist-win docker-build docker-up docker-down flush use pin baseline server server-local app app-local app-win pack-local smoke watch refs
 
 .DEFAULT_GOAL := help
 
@@ -166,6 +166,15 @@ app-local: $(_NPM_STAMP)  ## run the Electron desktop app using LOCAL source (im
 	$(MAKE) server-local
 	cd $(FRONTEND) && COWORK_SERVER_DISABLE_AUTOUPDATE=1 \
 		COWORK_SERVER_PACKAGE="$(CURDIR)/$(API)" npm run dev
+
+# Thin wrapper — the script also runs standalone from Git Bash on machines
+# without make: `scripts/app-win.sh [--relaunch] [--skip-server]`.
+app-win: $(_NPM_STAMP)  ## build+package Windows app from LOCAL source + reinstall server (RELAUNCH=1 to launch)
+	bash scripts/app-win.sh $(if $(filter 1,$(RELAUNCH)),--relaunch,)
+
+# Thin wrapper — also runs standalone: `cd backend/core_api && uv run python scripts/smoke.py`.
+smoke:  ## bounded smoke checks against a RUNNING server on 127.0.0.1:26866 (never starts one)
+	cd $(API) && uv run python scripts/smoke.py
 
 pack-local: $(_NPM_STAMP)  ## build macOS .app from LOCAL uncommitted source, iCloud-safe (no DMG)
 	$(MAKE) server-local

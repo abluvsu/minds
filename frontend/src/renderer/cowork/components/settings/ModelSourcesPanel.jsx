@@ -9,10 +9,9 @@ import {
   fetchProviderEntryModels,
 } from '../../api';
 
-// Anthropic and MindsHub were removed as addable source types
+// Anthropic was removed as an addable source type
 // (2026-07-04, user decision): Claude runs via the Claude Code CLI
-// coworker (subscription, no API key), and MindsDB/MindsHub is not
-// used at all. The backend still tolerates legacy rows of those types.
+// coworker (subscription, no API key).
 const TYPE_LABELS = {
   openai: 'OpenAI',
   gemini: 'Gemini',

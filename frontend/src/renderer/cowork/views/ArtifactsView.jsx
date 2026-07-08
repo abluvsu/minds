@@ -1246,7 +1246,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   // Centralized publish — single source of truth for state updates,
   // toast dispatch, and busy bookkeeping. Mirrors anton's /publish
   // command flow: POST → server zips, scrubs credentials, uploads to
-  // MindsHub, persists report_id in `.published.json`. We then reflect
+  // persists report_id in `.published.json`. We then reflect
   // the returned URL into the local list so the UI flips to "Published"
   // without a refetch.
   // Publishing is two steps: choose visibility (public / password) in a
@@ -1288,10 +1288,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
       }
     } catch (e) {
       const msg = e?.message || String(e);
-      // Map the most common failure to a clearer next step.
-      const friendly = /minds_api_key/i.test(msg) || /minds api key/i.test(msg)
-        ? 'Set your Minds API key in Settings to publish artifacts.'
-        : `Publish failed: ${msg}`;
+      const friendly = `Publish failed: ${msg}`;
       setToast({ kind: 'error', message: friendly });
     } finally {
       setBusy(artifact.path, false);
@@ -1305,7 +1302,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
     try {
       await unpublishArtifact(publishTargetPath(artifact));
       updateOne({ ...artifact, publishedUrl: '' });
-      setToast({ kind: 'ok', message: 'Unpublished from MindsHub.' });
+      setToast({ kind: 'ok', message: 'Unpublished.' });
     } catch (e) {
       setToast({ kind: 'error', message: `Unpublish failed: ${e?.message || e}` });
     } finally {

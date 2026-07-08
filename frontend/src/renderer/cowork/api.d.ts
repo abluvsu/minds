@@ -11,8 +11,8 @@ export interface RecommendedModels {
 }
 
 /**
- * Fetch the backend's recommended-models map (MindsHub's live `/v1/models`
- * for minds-cloud). Returns null if the request fails.
+ * Fetch the backend's recommended-models map (live `/v1/models`).
+ * Returns null if the request fails.
  */
 export function fetchRecommendedModels(): Promise<RecommendedModels | null>;
 
