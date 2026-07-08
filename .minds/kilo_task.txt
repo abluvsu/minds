@@ -1,26 +1,4 @@
-STATUS: OA-3 COMPLETE — 2026-07-08
-STATUS: WAVE 3 (MindsHub Strip-out) COMPLETE — Executed by GEMINI-CTO
-TASK: WAVE 2 — OAUTH-2 (Frontend Settings)
-
-FIRST: Read .minds/war_room.md for full context and the STANDING ORDERS.
-You are KILO. Log every edit to the EDIT JOURNAL section of .minds/war_room.md
-
-YOUR FILE SCOPE (DO NOT touch any other file):
-  - frontend/src/renderer/cowork/views/SettingsView.jsx
-  - frontend/src/renderer/cowork/api.js (only if generic settings API doesn't already exist for user settings)
-  - .minds/war_room.md (append to EDIT JOURNAL only)
-
-THE TASKS:
-
-1. OA-3 (Settings: the one-time unlock panel): ✅ DONE
-   a. New collapsible section "Google Sign-In (one-time unlock)" near Model Sources.
-   b. Fields: Client ID (text), Client secret (password, masked once set).
-   c. Save button wiring through existing settings save path (keys: `google_oauth_client_id`, `google_oauth_client_secret`).
-   d. Above fields, add a 3-step how-to (~8 lines): 1) console.cloud.google.com → create/pick project → enable APIs (Gmail, Ads, Analytics, Drive, Calendar), 2) OAuth consent screen → External → add yourself as test user, 3) Credentials → Create OAuth client → Desktop app → copy both values here. Note: "Google shows an 'unverified app' warning in test mode — click Continue, it's your own app."
-   e. Show green "Unlocked — Google connectors are one-click now" pill when both values are set.
-   f. Words "OAuth", "token", "scope" must not appear outside this section and Advanced connector methods.
-
-WAR ROOM JOURNAL FORMAT:
-  ### KILO | <time> | WORKING or BLOCKED or COMPLETE
-  - File: <path>
-  - Change: <what you did>
+STATUS: BLOCKED — 2026-07-08
+SUMMARY: Frontend build/user-flow verification is blocked by a Windows dependency-install failure. `npm install` is failing with Electron/native file-lock and npm cache errors, so `npm run build` cannot be completed yet.
+NEXT ACTION: Repair the local Node/Electron install on Windows, then rerun the build and onboarding flow.
+REFERENCE: Read `.minds/war_room.md` and `logs/tester-findings.md` for the full evidence.
