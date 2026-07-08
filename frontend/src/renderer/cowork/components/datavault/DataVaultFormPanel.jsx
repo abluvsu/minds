@@ -771,6 +771,12 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             // Methods with fields wait for Submit — handleAction takes over.
             const method = Array.isArray(spec?.methods) ? spec.methods.find((m) => m.id === methodId) : null;
             if (method?.fields?.length) return;
+            const isOauthLaunch = method?.submit_action === 'oauth_launch';
+            if (isOauthLaunch) {
+              handleAction({ id: method.submit_action || 'submit', kind: 'primary', authMethod: methodId, values: {} });
+              return;
+            }
+
             // No fields — auto-start immediately on method selection.
             const engine = spec.engine || spec._connector_id || 'google_drive';
             const startFn = BROWSER_OAUTH_START[engine];
