@@ -759,8 +759,9 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             >Reopen sign-in page</button>
           </div>
         ) : (
-          <DataVaultForm
-            spec={spec}
+          <>
+            <DataVaultForm
+              spec={spec}
             busy={busy}
             onAction={handleAction}
             conversationId={conversationId}
@@ -820,6 +821,8 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
             color: 'var(--danger)', fontSize: 12,
           }}>{error}</div>
+        )}
+          </>
         )}
       </div>
     </div>

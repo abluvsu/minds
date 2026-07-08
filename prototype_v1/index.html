@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chief of Staff - OS</title>
+    <style>
+        :root {
+            --bg: #fafafa;
+            --surface: #ffffff;
+            --text: #171717;
+            --text-muted: #737373;
+            --border: #e5e5e5;
+            --primary: #000000;
+            --primary-hover: #404040;
+            --warning: #f59e0b;
+            --success: #10b981;
+            --radius: 12px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+
+        body { background-color: var(--bg); color: var(--text); display: flex; height: 100vh; overflow: hidden; }
+
+        /* Left Sidebar - Ultra Minimal */
+        .sidebar {
+            width: 280px;
+            background-color: var(--bg);
+            border-right: 1px solid var(--border);
+            padding: 32px 24px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .logo { font-size: 1.1rem; font-weight: 600; margin-bottom: 48px; letter-spacing: -0.02em; }
+        
+        .nav-section { margin-bottom: 32px; }
+        .nav-title { font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 12px; letter-spacing: 0.05em; }
+        .nav-item { padding: 8px 12px; border-radius: 8px; margin-bottom: 4px; cursor: pointer; color: var(--text-muted); font-weight: 500; font-size: 0.95rem; transition: all 0.2s; display: flex; justify-content: space-between;}
+        .nav-item:hover { color: var(--text); }
+        .nav-item.active { background-color: #f5f5f5; color: var(--text); font-weight: 600; }
+        .nav-badge { background: var(--primary); color: white; padding: 2px 6px; border-radius: 100px; font-size: 0.75rem; }
+
+        /* Main Content - Conversational Flow */
+        .main-content {
+            flex-grow: 1;
+            padding: 48px 80px;
+            overflow-y: auto;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .briefing-header { font-size: 2.2rem; font-weight: 500; letter-spacing: -0.03em; margin-bottom: 12px; }
+        .briefing-summary { font-size: 1.1rem; color: var(--text-muted); margin-bottom: 48px; line-height: 1.5; }
+
+        .list-group { margin-bottom: 48px; }
+        .list-title { font-size: 0.85rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px;}
+
+        /* Unified Card Style */
+        .item-row { display: flex; align-items: flex-start; padding: 16px 0; border-bottom: 1px solid #f0f0f0; transition: all 0.2s; cursor: pointer;}
+        .item-row:hover { background-color: #f9f9f9; transform: translateX(4px); }
+        .item-icon { width: 24px; font-size: 1.2rem; margin-right: 16px; margin-top: 2px;}
+        .item-content { flex-grow: 1; }
+        .item-title { font-weight: 500; font-size: 1.05rem; margin-bottom: 4px; }
+        .item-meta { font-size: 0.9rem; color: var(--text-muted); display: flex; gap: 12px; align-items: center;}
+        
+        .priority { font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; font-weight: 600; text-transform: uppercase; }
+        .p-high { background: #fee2e2; color: #991b1b; }
+        .p-med { background: #fef3c7; color: #92400e; }
+        
+        /* Interactive Previews */
+        .preview-box { margin-top: 12px; padding: 16px; background: #f8f8f8; border: 1px solid var(--border); border-radius: 8px; font-size: 0.9rem; display: none; }
+        .preview-actions { margin-top: 12px; display: flex; gap: 8px; }
+        .btn { padding: 6px 12px; background: white; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 500;}
+        .btn:hover { background: #f5f5f5; }
+        .btn-primary { background: var(--primary); color: white; border: none; }
+        .btn-primary:hover { background: var(--primary-hover); }
+
+        /* Trust Timeline */
+        .timeline { margin-top: 12px; border-left: 2px solid var(--border); padding-left: 16px; display: none; }
+        .timeline-step { margin-bottom: 12px; font-size: 0.9rem; position: relative; }
+        .timeline-step::before { content: ''; position: absolute; left: -21px; top: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
+        .timeline-step.active::before { background: var(--primary); box-shadow: 0 0 0 3px #e5e5e5; }
+        .timeline-time { color: var(--text-muted); font-variant-numeric: tabular-nums; margin-right: 8px; font-size: 0.8rem;}
+        .timeline-trust { display: flex; gap: 12px; margin-top: 4px; font-size: 0.8rem; color: var(--text-muted); }
+
+        /* Input Bar */
+        .input-container { position: fixed; bottom: 40px; left: 360px; right: 140px; background: white; border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); padding: 8px 16px; display: flex; align-items: center; }
+        .input-container input { flex-grow: 1; border: none; padding: 12px; font-size: 1.1rem; outline: none; }
+        .input-container input::placeholder { color: #a3a3a3; font-weight: 400; }
+        
+        .state-tag { font-size: 0.75rem; padding: 2px 6px; background: #e5e5e5; border-radius: 4px; margin-left: 8px;}
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <div class="logo">Anton <span style="color:var(--text-muted); font-weight:400;">Chief of Staff</span></div>
+        
+        <div class="nav-section">
+            <div class="nav-item active">Operating System</div>
+            <div class="nav-item">AI Inbox <span class="nav-badge">2</span></div>
+            <div class="nav-item">Projects</div>
+        </div>
+
+        <div class="nav-section">
+            <div class="nav-title">Knowledge & Memory</div>
+            <div class="nav-item">Connected Apps</div>
+            <div class="nav-item">Uploaded Docs</div>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="briefing-header">Good morning Ashutosh.</div>
+        <div class="briefing-summary">
+            Yesterday, I completed <b>4 tasks</b> while you were away.<br>
+            I am currently tracking 2 ongoing projects, and I need your approval on 2 items to proceed.
+        </div>
+
+        <!-- AI Inbox / Waiting for you -->
+        <div class="list-group" id="inbox-group">
+            <div class="list-title">AI Inbox (Waiting for you)</div>
+            
+            <div class="item-row" onclick="togglePreview('approval-1')">
+                <div class="item-icon" style="color: var(--warning);">⚠</div>
+                <div class="item-content">
+                    <div class="item-title">Approve Quarterly Budget Adjustments</div>
+                    <div class="item-meta">
+                        <span class="priority p-high">Critical</span>
+                        <span>Requires financial sign-off before I can notify the team.</span>
+                    </div>
+                    
+                    <div class="preview-box" id="approval-1">
+                        <b>Executive Summary:</b> Shifted 15% of marketing spend to Q4 events as requested last week.
+                        <div class="preview-actions">
+                            <button class="btn btn-primary" onclick="event.stopPropagation(); approveTask(this)">Approve & Execute</button>
+                            <button class="btn" onclick="event.stopPropagation();">Request Revision</button>
+                            <button class="btn" onclick="event.stopPropagation();">View HTML Dashboard</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="item-row">
+                <div class="item-icon" style="color: var(--warning);">⚠</div>
+                <div class="item-content">
+                    <div class="item-title">Approve Investor Update Draft</div>
+                    <div class="item-meta">
+                        <span class="priority p-med">High</span>
+                        <span>Email is drafted. Awaiting review.</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Completed Work (HTML First) -->
+        <div class="list-group">
+            <div class="list-title">Completed While You Were Away</div>
+            
+            <div class="item-row" onclick="togglePreview('result-1')">
+                <div class="item-icon" style="color: var(--success);">✓</div>
+                <div class="item-content">
+                    <div class="item-title">Hiring Dashboard for Q3</div>
+                    <div class="item-meta"><span>Generated interactive HTML dashboard from Greenhouse data.</span></div>
+                    
+                    <div class="preview-box" id="result-1">
+                        <b>Preview:</b> 4 offers accepted, 12 in final rounds. Time-to-hire decreased by 4 days.
+                        <div class="preview-actions">
+                            <button class="btn btn-primary" onclick="event.stopPropagation();">Open Interactive Dashboard</button>
+                            <button class="btn" onclick="event.stopPropagation(); showReviseInput('result-1')">Revise</button>
+                            <button class="btn" onclick="event.stopPropagation();">Export PDF</button>
+                        </div>
+                        <!-- Revision Input -->
+                        <div id="revise-result-1" style="display:none; margin-top: 12px; display: flex; gap: 8px;">
+                            <input type="text" placeholder="e.g. Add a chart for engineering roles..." style="flex-grow:1; padding: 6px; border: 1px solid var(--border); border-radius:4px;">
+                            <button class="btn" onclick="submitRevision(this)">Send</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="item-row">
+                <div class="item-icon" style="color: var(--success);">✓</div>
+                <div class="item-content">
+                    <div class="item-title">Competitor Pricing Matrix</div>
+                    <div class="item-meta"><span>Generated comparison table from 5 websites.</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Currently Working (Trust Timeline) -->
+        <div class="list-group" id="working-group">
+            <div class="list-title">Currently Working</div>
+            
+            <div class="item-row" onclick="toggleTimeline('timeline-1')">
+                <div class="item-icon" style="color: var(--primary);">⟳</div>
+                <div class="item-content">
+                    <div class="item-title">Building Sales Forecast Report</div>
+                    <div class="item-meta">
+                        <span>Compiling Stripe data.</span>
+                        <span class="state-tag">ETA: 4 mins</span>
+                    </div>
+                    
+                    <div class="timeline" id="timeline-1">
+                        <div class="timeline-step">
+                            <span class="timeline-time">09:02</span> Started execution (Confidence: 98%)
+                        </div>
+                        <div class="timeline-step">
+                            <span class="timeline-time">09:05</span> Extracting CSV from Stripe (Cost: $0.01)
+                        </div>
+                        <div class="timeline-step active">
+                            <span class="timeline-time">09:12</span> Generating HTML Visualization...
+                            <div class="timeline-trust"><span>Memory: Applied your preference for Bar Charts.</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div style="height: 100px;"></div> <!-- Spacer -->
+    </div>
+
+    <!-- The Intent Bar -->
+    <div class="input-container">
+        <form style="width: 100%; display: flex;" onsubmit="delegateNewTask(event)">
+            <input type="text" id="main-intent" placeholder="What do you need finished today?" autocomplete="off">
+        </form>
+    </div>
+
+    <script>
+        function togglePreview(id) {
+            const el = document.getElementById(id);
+            if (el.style.display === 'block') {
+                el.style.display = 'none';
+            } else {
+                el.style.display = 'block';
+            }
+        }
+
+        function toggleTimeline(id) {
+            const el = document.getElementById(id);
+            if (el.style.display === 'block') {
+                el.style.display = 'none';
+            } else {
+                el.style.display = 'block';
+            }
+        }
+
+        function approveTask(btn) {
+            const row = btn.closest('.item-row');
+            row.style.opacity = '0.5';
+            btn.innerText = "Approved. Moving to Working...";
+            setTimeout(() => {
+                row.remove();
+                
+                // Add to working
+                const workingGroup = document.getElementById('working-group');
+                const newRow = document.createElement('div');
+                newRow.className = 'item-row';
+                newRow.innerHTML = `
+                    <div class="item-icon" style="color: var(--primary);">⟳</div>
+                    <div class="item-content">
+                        <div class="item-title">Executing Quarterly Budget Adjustments</div>
+                        <div class="item-meta"><span>Finalizing API calls...</span><span class="state-tag">ETA: 1 min</span></div>
+                    </div>
+                `;
+                workingGroup.appendChild(newRow);
+                
+                const count = document.querySelector('.nav-badge');
+                count.innerText = "1";
+            }, 1500);
+        }
+
+        function showReviseInput(id) {
+            document.getElementById('revise-' + id).style.display = 'flex';
+        }
+
+        function submitRevision(btn) {
+            btn.innerText = "Revising V2...";
+            setTimeout(() => {
+                btn.closest('.item-row').remove();
+                alert("Task moved back to 'Working' to generate Version 2.");
+            }, 1000);
+        }
+
+        function delegateNewTask(e) {
+            e.preventDefault();
+            const input = document.getElementById('main-intent');
+            if(input.value.trim() === '') return;
+            
+            const taskText = input.value;
+            input.value = '';
+            
+            const workingGroup = document.getElementById('working-group');
+            const newRow = document.createElement('div');
+            newRow.className = 'item-row';
+            newRow.innerHTML = `
+                <div class="item-icon" style="color: var(--primary);">⟳</div>
+                <div class="item-content">
+                    <div class="item-title">${taskText}</div>
+                    <div class="item-meta"><span>Planning steps...</span><span class="state-tag">Evaluating...</span></div>
+                </div>
+            `;
+            workingGroup.appendChild(newRow);
+            
+            // Scroll to bottom
+            document.querySelector('.main-content').scrollTo(0, document.body.scrollHeight);
+        }
+    </script>
+</body>
+</html>

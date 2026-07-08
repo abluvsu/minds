@@ -1,0 +1,39 @@
+STATUS: OA-1 COMPLETE — 2026-07-08
+STATUS: WAVE 4 (CLI Publish Strip) COMPLETE — Executed by GEMINI-CTO
+STATUS: MINDSHUB STRIPPED (2026-07-08) — Full backend + frontend removal. Provider enum now ANTHROPIC/OPENAI/GEMINI/OPENAI_COMPATIBLE only. Publishing uses ANTON_MINDS_API_KEY env var.
+FIRST: Read .minds/war_room.md for full context and the STANDING ORDERS.
+You are OPENCODE. Log every edit to the EDIT JOURNAL section of .minds/war_room.md
+
+YOUR FILE SCOPE (DO NOT touch any other file):
+  - backend/core_api/cowork/handlers/probe.py
+  - backend/core_api/cowork/services/connectors/oauth/config.py
+  - backend/core_api/cowork/common/settings/app_settings.py
+  - backend/core_api/cowork/api/v1/endpoints/connectors/oauth.py
+  - backend/core_api/tests/* (e.g. test_oauth_launch.py)
+  - .minds/war_room.md (append to EDIT JOURNAL only)
+
+STATUS: OA-1 COMPLETE — 2026-07-08
+
+THE TASKS:
+
+1. OA-1 (Backend ProbeHandler oauth_launch branch): ✅ DONE
+   In `ProbeHandler.run()`, after method is resolved (where `form_spec["selected_method"]` is set):
+   If `submit_action == "oauth_launch"`, branch BEFORE the probe path:
+   a. Map connector to OAuth service using `GOOGLE_SERVICES` in `cowork/services/connectors/oauth/config.py`. Match `connector_id` against `.engine` values. No match → clean error patch ("This connector's sign-in isn't wired yet"), status "retry".
+   b. Call `google_service.start(service_key, oauth_settings)`. If it raises 400 "credentials are not configured", emit form patch: `form_error`: "Google sign-in isn't unlocked yet on this install. Paste a Google OAuth client ID + secret in Settings → Model Sources (one-time, ~10 min) and try again.", status "retry".
+   c. On success, emit patch carrying `_oauth_url`: <url>, `status_text`: "Waiting for Google sign-in in your browser…", `_is_probing`: true. THEN POLL `OAuthStateStore` every 2s (up to 5 min).
+      - `lastSuccessAt` newer than start → emit success patch (title "Connected — <account>", `_is_success`: true, pull account from vault connection) and `response.completed` status "success".
+      - `lastError` newer than start → error patch with error, status "retry".
+      - Timeout → error patch "Sign-in timed out — try again", clear pending state.
+   d. The LLM probe is skipped entirely on this branch.
+
+2. OAuth Settings Bridge:
+   `google_service.start`/`callback` take `OAuthSettings()`. Build a bridge helper that loads `SettingService(session).load()` and overlays `google_oauth_client_id/secret` onto `OAuthSettings` if present. Use it in the probe branch AND `cowork/api/v1/endpoints/connectors/oauth.py`.
+
+3. Tests:
+   Keep pytest green. Add tests for (a) `oauth_launch` + no creds → specific error patch, no probe. (b) `oauth_launch` + creds + state fresh success → success patch. Mock store/vault; no network.
+
+WAR ROOM JOURNAL FORMAT:
+  ### OPENCODE | <time> | WORKING or BLOCKED or COMPLETE
+  - File: <path>
+  - Change: <what you did>

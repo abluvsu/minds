@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "servers": [
+    {
+      "id": "filesystem",
+      "enabled": true,
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "./"
+      ]
+    },
+    {
+      "id": "github",
+      "enabled": false,
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ]
+    }
+  ]
+}
